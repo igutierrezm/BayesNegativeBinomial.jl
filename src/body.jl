@@ -20,7 +20,7 @@ y_i | x_i, \\beta
 ```
 
 given a response vector `y` and a design matrix `X`. This constructor does not 
-copy any of its arguments. Hence, for example, if `y[i]` is changed, it will 
+copy any of its arguments. Hence, for example, if `y[1]` is changed, it will 
 affect the Gibbs sampler.
 
 # Keyword arguments
@@ -69,8 +69,7 @@ end
 """
     step!(rng::AbstractRNG, mdl::BayesNegativeBinomial.Sampler)
 
-Perform 1 Gibbs iteration, using the data augmentation strategy 
-described in Polson et al. (2013).
+Perform 1 Gibbs iteration, using the strategy described in Polson et al. (2013).
 
 # Example 
 
@@ -104,8 +103,8 @@ end
 """
     sample(rng::AbstractRNG, s::BayesNegativeBinomial.Sampler; kwargs...)
 
-Draw a posterior sample using the Gibbs sampler `s`, following the data 
-augmentation strategy described in Polson et al. (2013).
+Draw a posterior sample using the Gibbs sampler `s`, following the 
+strategy described in Polson et al. (2013).
 
 # Arguments
 
