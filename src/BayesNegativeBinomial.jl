@@ -1,5 +1,11 @@
 module BayesNegativeBinomial
 
-# Write your package code here.
+using Distributions
+using ExtractMacro
+using PolyaGammaSamplers
+using LinearAlgebra
+using Random
+
+include("body.jl")
 
 end
