@@ -78,7 +78,7 @@ described in Polson et al. (2013).
 julia> using Random, Distributions
 julia> rng = MersenneTwister(1)
 julia> X = randn(rng, 100, 2)
-julia> y = rand(rng, 0:2, 100)
+julia> y = rand(rng, 0:2, 10)
 julia> s = BayesNegativeBinomial.Sampler(y, X)
 julia> BayesNegativeBinomial.step!(rng, s)
 ```
@@ -117,8 +117,8 @@ augmentation strategy described in Polson et al. (2013).
 ```julia
 julia> using Random                 
 julia> rng = MersenneTwister(1)     
-julia> X = randn(100, 2)            
-julia> y = randn(100) .< 0          
+julia> X = randn(rng, 100, 2)
+julia> y = rand(rng, 0:2, 10)        
 julia> s = BayesNegativeBinomial.Sampler(y, X)        
 julia> chain = BayesNegativeBinomial.sample(rng, s)
 ```
