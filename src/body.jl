@@ -69,7 +69,7 @@ end
 """
     step!(rng::AbstractRNG, mdl::BayesNegativeBinomial.Sampler)
 
-Perform 1 Gibbs iteration, using the strategy described in Polson et al. (2013).
+Perform 1 iteration of the Gibbs sampler `s`, following Polson et al. (2013).
 
 # Example 
 
@@ -103,8 +103,8 @@ end
 """
     sample(rng::AbstractRNG, s::BayesNegativeBinomial.Sampler; kwargs...)
 
-Draw a posterior sample using the Gibbs sampler `s`, following the 
-strategy described in Polson et al. (2013).
+Draw a posterior sample using the Gibbs sampler `s`, 
+following Polson et al. (2013).    
 
 # Arguments
 
