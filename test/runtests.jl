@@ -12,9 +12,10 @@ function simulate_sample(rng, N, D)
 end
 
 @testset "BayesNegativeBinomial.jl" begin
-    N, D = 4000, 4;
-    rng = MersenneTwister(1);
-    y, X = simulate_sample(rng, N, D);
-    # s = BayesNegativeBinomial.Sampler(y, X)
-    # chain = BayesNegativeBinomial.sample(rng, s);
+    N, D = 100, 4
+    rng = MersenneTwister(1)
+    y, X = simulate_sample(rng, N, D)
+    s = BayesNegativeBinomial.Sampler(y, X)
+    chain = BayesNegativeBinomial.sample(rng, s)
+    BayesNegativeBinomial.step!(rng, s)
 end

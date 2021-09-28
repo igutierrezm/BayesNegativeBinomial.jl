@@ -58,7 +58,7 @@ struct Sampler
         Σ0::Matrix{Float64} = Matrix{Float64}(10 * I(size(X, 2))),
         r0::Vector{Int} = [1],
     )
-        N, D = size(X, 1)
+        N, D = size(X)
         w = zeros(N)
         z = zeros(N)
         a = zeros(D)
@@ -67,7 +67,7 @@ struct Sampler
 end
 
 """
-    step!(rng::AbstractRNG, mdl::BayesNegativeBinomial.Sampler)
+    step!(rng::AbstractRNG, s::BayesNegativeBinomial.Sampler)
 
 Perform 1 iteration of the Gibbs sampler `s`, following Polson et al. (2013).
 
@@ -134,7 +134,7 @@ function sample(rng::AbstractRNG, s::Sampler; mcmcsize = 4000, burnin = 2000)
     for iter in 1:mcmcsize
         step!(rng, s)
         if iter > burnin
-            chain[iter - burnin] .= mdl.β
+            chain[iter - burnin] .= s.β
         end
     end
     return chain
