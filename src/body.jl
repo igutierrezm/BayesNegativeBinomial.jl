@@ -7,7 +7,7 @@ Initialize a Gibbs Sampler for the following Bayesian Negative-Binomial model:
 \\begin{aligned}
 y_i | x_i, \\beta
 &\\sim 
-\\text{NegativeBinomial}(r_0, \\Lambda(x_i'\\beta)),
+\\text{NegativeBinomial}(r_{0y}, \\Lambda(x_i'\\beta)),
 \\\\
 \\Lambda(x_i'\\beta)
 &=
@@ -15,7 +15,7 @@ y_i | x_i, \\beta
 \\\\
 \\beta 
 &\\sim 
-\\mathcal{N}(m_0, \\Sigma_0),
+\\mathcal{N}(m_{0\\beta}, \\Sigma_{0\\beta}),
 \\end{aligned}
 ```
 
@@ -26,9 +26,9 @@ affect the Gibbs sampler.
 # Keyword arguments
 
 * `β = zeros(size(X, 2))`: current state of ``\\beta``.
-* `Σ0 = 10 * I(size(X, 2))`: ``\\Sigma_0``.
-* `m0 = zeros(size(X, 2))`: ``m_0``.
-* `r0 = [1]`: ``[r_0]``.
+* `Σ0β = 10 * I(size(X, 2))`: ``\\Sigma_{0\\beta}``.
+* `m0β = zeros(size(X, 2))`: ``m_{0\\beta}``.
+* `r0y = [1]`: ``[r_{0y}]``.
 
 # Example 
 
@@ -47,22 +47,22 @@ struct Sampler
     w::Vector{Float64}
     z::Vector{Float64}
     a::Vector{Float64}
-    m0::Vector{Float64}
-    Σ0::Matrix{Float64}
-    r0::Vector{Int}
+    m0β::Vector{Float64}
+    Σ0β::Matrix{Float64}
+    r0y::Vector{Int}
     function Sampler(
         y::Vector{Int}, 
         X::Matrix{Float64};
         β::Vector{Float64} = zeros(size(X, 2)),
-        m0::Vector{Float64} = zeros(size(X, 2)), 
-        Σ0::Matrix{Float64} = Matrix{Float64}(10 * I(size(X, 2))),
-        r0::Vector{Int} = [1],
+        m0β::Vector{Float64} = zeros(size(X, 2)), 
+        Σ0β::Matrix{Float64} = Matrix{Float64}(10 * I(size(X, 2))),
+        r0y::Vector{Int} = [1],
     )
         N, D = size(X)
         w = zeros(N)
         z = zeros(N)
         a = zeros(D)
-        new(y, X, β, w, z, a, m0, Σ0, r0)
+        new(y, X, β, w, z, a, m0β, Σ0β, r0y)
     end
 end
 
@@ -90,13 +90,13 @@ julia> BayesNegativeBinomial.step!(rng, s)
     <https://doi.org/10.1080/01621459.2013.829001>.
 """
 function step!(rng::AbstractRNG, s::Sampler)
-    @extract s : y X β w z a m0 Σ0 r0
+    @extract s : y X β w z a m0β Σ0β r0y
     mul!(z, X, β);
     for i in 1:length(w)
-        w[i] = rand(rng, PolyaGammaPSWSampler(y[i] + r0[], z[i]))
+        w[i] = rand(rng, PolyaGammaPSWSampler(y[i] + r0y[], z[i]))
     end
-    Σ1 = inv(cholesky(Symmetric(X' * Diagonal(w) * X + inv(Σ0))))
-    m1 = Σ1 * (X' * (y .- r0[]) / 2 + Σ0 \ m0)
+    Σ1 = inv(cholesky(Symmetric(X' * Diagonal(w) * X + inv(Σ0β))))
+    m1 = Σ1 * (X' * (y .- r0y[]) / 2 + Σ0β \ m0β)
     rand!(rng, MvNormal(m1, Σ1), β)
 end
 
