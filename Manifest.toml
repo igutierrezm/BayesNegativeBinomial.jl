@@ -173,8 +173,6 @@ uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 [[PolyaGammaSamplers]]
 deps = ["Distributions", "Random", "StatsFuns"]
 git-tree-sha1 = "a675f3a525406a8cc4b8d8c024a84e38baddf770"
-repo-rev = "master"
-repo-url = "https://github.com/igutierrezm/PolyaGammaSamplers.jl"
 uuid = "99ff7fc7-8a0f-4729-8284-81f1989d3fc6"
 version = "0.1.0"
 
