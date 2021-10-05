@@ -5,23 +5,35 @@ Initialize a Gibbs Sampler for the following Bayesian Negative-Binomial model:
 
 ```math
 \\begin{aligned}
-y_i | x_i, \\beta
+y_i | x_i, \\beta, \\gamma
 &\\sim 
-\\text{NegativeBinomial}(r_{0y}, \\Lambda(x_i'\\beta)),
+\\text{NB}(r_{0y}, 1 / (1 + e^{- x_{i\\gamma}'\\beta_{\\gamma}})),
 \\\\
-\\Lambda(x_i'\\beta)
-&=
-1 / (1 + e^{- x_i'\\beta}),
-\\\\
-\\beta 
+\\beta_k | \\gamma_k
 &\\sim 
-\\mathcal{N}(m_{0\\beta}, \\Sigma_{0\\beta}),
+\\begin{cases}
+    \\mathcal{N}(m_{0\\beta}, \\Sigma_{0\\beta}), 
+    &\\text{if } \\gamma = 1,
+    \\\\
+    \\delta_0
+    &\\text{if } \\gamma = 0,
+\\end{cases}
+\\\\
+\\gamma
+&\\sim
+\\text{Womack}(\\eta_{0\\gamma}),
 \\end{aligned}
 ```
 
 given a response vector `y` and a design matrix `X`. This constructor does not 
 copy any of its arguments. Hence, for example, if `y[1]` is changed, it will 
 affect the Gibbs sampler.
+
+where ``y_i \\in \\mathbb{N}_0`` is the response for the ``i``-observation, 
+``x_i \\in \\mathbb{R}^K`` is the associated covariate vector, 
+``\\delta_0(\\cdot)`` is the Dirac measure centred at ``0`` and 
+``\\text{Womack}(\\eta_0)`` is the Womack distribution with 
+parameter ``\\eta_{0\\gamma}`` on ``\\{0, 1\\}^K``.
 
 # Keyword arguments
 
