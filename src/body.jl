@@ -97,7 +97,7 @@ julia> chain = BayesNegativeBinomial.sample(rng, s)
     Statistical Association*, 108:504, 1339-1349,
     <https://doi.org/10.1080/01621459.2013.829001>.    
 """
-function sample(rng::AbstractRNG, s::Sampler; mcmcsize = 4000, burnin = 2000)
+function sample(rng::AbstractRNG, s::Sampler; mcmcsize = 10000, burnin = 5000)
     chain = [zeros(size(s.X, 2)) for _ in 1:(mcmcsize - burnin)]
     for iter in 1:mcmcsize
         step!(rng, s)
@@ -143,9 +143,29 @@ function step!(rng::AbstractRNG, s::Sampler)
     A = Symmetric(X' * Diagonal(w) * X + inv(Σ0β))
     b = X' * (y .- r0y[]) / 2
 
+    # Update gamma
+    for d in 1:length(γ)
+        # Logodds numerator
+        γ[d] = false
+        mf, Σf = posterior_hyperparameters(s::Sampler, A, b)
+        logodds_den = 
+            logpdf(MvNormal(m0β[γ], Σ0β[γ, γ]), zeros(length(mf))) -
+            logpdf(MvNormal(mf, Σf), zeros(length(mf)))
+        # Logodds numerator
+        γ[d] = true
+        mt, Σt = posterior_hyperparameters(s::Sampler, A, b)
+        logodds_num = 
+            logpdf(MvNormal(m0β[γ], Σ0β[γ, γ]), zeros(length(mt))) -
+            logpdf(MvNormal(mt, Σt), zeros(length(mt)))
+        odds = exp(logodds_num - logodds_den)
+        γ[d] = rand(rng) < odds / (1.0 + odds)
+    end
+
     # Update the posterior hyperparameters 
+    β .= 0.0
     m1, Σ1 = posterior_hyperparameters(s::Sampler, A, b)
-    rand!(rng, MvNormal(m1, Σ1), β)
+    β[γ] .= rand(rng, MvNormal(m1, Σ1))
+    return nothing
 end
 
 function posterior_hyperparameters(s::Sampler, A, b)
@@ -154,3 +174,4 @@ function posterior_hyperparameters(s::Sampler, A, b)
     m1 = Σ1 * (b[γ] + Σ0β[γ, γ] \ m0β[γ])
     return m1, Σ1
 end
+
