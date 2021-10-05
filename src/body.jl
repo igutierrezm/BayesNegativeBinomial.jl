@@ -47,6 +47,7 @@ struct Sampler
     w::Vector{Float64}
     z::Vector{Float64}
     a::Vector{Float64}
+    γ::Vector{Bool}
     m0β::Vector{Float64}
     Σ0β::Matrix{Float64}
     r0y::Vector{Int}
@@ -62,42 +63,9 @@ struct Sampler
         w = zeros(N)
         z = zeros(N)
         a = zeros(D)
-        new(y, X, β, w, z, a, m0β, Σ0β, r0y)
+        γ = ones(Bool, D)
+        new(y, X, β, w, z, a, γ, m0β, Σ0β, r0y)
     end
-end
-
-"""
-    step!(rng::AbstractRNG, s::BayesNegativeBinomial.Sampler)
-
-Perform 1 iteration of the Gibbs sampler `s`, following Polson et al. (2013).
-
-# Example 
-
-```julia
-julia> using Random, Distributions
-julia> rng = MersenneTwister(1)
-julia> X = randn(rng, 100, 2)
-julia> y = rand(rng, 0:2, 10)
-julia> s = BayesNegativeBinomial.Sampler(y, X)
-julia> BayesNegativeBinomial.step!(rng, s)
-```
-
-# References
-
-1. Polson, N., Scott, J. & Windle, J. (2013) Bayesian inference for logistic 
-    models using Pólya–Gamma latent variables, *Journal of the American 
-    Statistical Association*, 108:504, 1339-1349,
-    <https://doi.org/10.1080/01621459.2013.829001>.
-"""
-function step!(rng::AbstractRNG, s::Sampler)
-    @extract s : y X β w z a m0β Σ0β r0y
-    mul!(z, X, β);
-    for i in 1:length(w)
-        w[i] = rand(rng, PolyaGammaPSWSampler(y[i] + r0y[], z[i]))
-    end
-    Σ1 = inv(cholesky(Symmetric(X' * Diagonal(w) * X + inv(Σ0β))))
-    m1 = Σ1 * (X' * (y .- r0y[]) / 2 + Σ0β \ m0β)
-    rand!(rng, MvNormal(m1, Σ1), β)
 end
 
 """
@@ -138,4 +106,51 @@ function sample(rng::AbstractRNG, s::Sampler; mcmcsize = 4000, burnin = 2000)
         end
     end
     return chain
+end
+
+"""
+    step!(rng::AbstractRNG, s::BayesNegativeBinomial.Sampler)
+
+Perform 1 iteration of the Gibbs sampler `s`, following Polson et al. (2013).
+
+# Example 
+
+```julia
+julia> using Random, Distributions
+julia> rng = MersenneTwister(1)
+julia> X = randn(rng, 100, 2)
+julia> y = rand(rng, 0:2, 10)
+julia> s = BayesNegativeBinomial.Sampler(y, X)
+julia> BayesNegativeBinomial.step!(rng, s)
+```
+
+# References
+
+1. Polson, N., Scott, J. & Windle, J. (2013) Bayesian inference for logistic 
+    models using Pólya–Gamma latent variables, *Journal of the American 
+    Statistical Association*, 108:504, 1339-1349,
+    <https://doi.org/10.1080/01621459.2013.829001>.
+"""
+function step!(rng::AbstractRNG, s::Sampler)
+    @extract s : y X β w z a γ m0β Σ0β r0y
+    # Update w
+    mul!(z, X, β);
+    for i in 1:length(w)
+        w[i] = rand(rng, PolyaGammaPSWSampler(y[i] + r0y[], z[i]))
+    end
+
+    # Update some auxiliary statistics
+    A = Symmetric(X' * Diagonal(w) * X + inv(Σ0β))
+    b = X' * (y .- r0y[]) / 2
+
+    # Update the posterior hyperparameters 
+    m1, Σ1 = posterior_hyperparameters(s::Sampler, A, b)
+    rand!(rng, MvNormal(m1, Σ1), β)
+end
+
+function posterior_hyperparameters(s::Sampler, A, b)
+    @extract s : γ m0β Σ0β
+    Σ1 = inv(cholesky(A[γ, γ]))
+    m1 = Σ1 * (b[γ] + Σ0β[γ, γ] \ m0β[γ])
+    return m1, Σ1
 end
