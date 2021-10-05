@@ -48,6 +48,8 @@ struct Sampler
     z::Vector{Float64}
     a::Vector{Float64}
     γ::Vector{Bool}
+    A::Matrix{Float64}
+    b::Vector{Float64}
     m0β::Vector{Float64}
     Σ0β::Matrix{Float64}
     r0y::Vector{Int}
@@ -64,7 +66,9 @@ struct Sampler
         z = zeros(N)
         a = zeros(D)
         γ = ones(Bool, D)
-        new(y, X, β, w, z, a, γ, m0β, Σ0β, r0y)
+        A = zeros(D, D)
+        b = zeros(D)
+        new(y, X, β, w, z, a, γ, A, b, m0β, Σ0β, r0y)
     end
 end
 
@@ -132,46 +136,63 @@ julia> BayesNegativeBinomial.step!(rng, s)
     <https://doi.org/10.1080/01621459.2013.829001>.
 """
 function step!(rng::AbstractRNG, s::Sampler)
-    @extract s : y X β w z a γ m0β Σ0β r0y
-    # Update w
+    step_w!(rng, s)
+    step_γ!(rng, s)
+    step_β!(rng, s)
+    return nothing
+end
+
+function step_w!(rng::AbstractRNG, s::Sampler)
+    @extract s : y X β w z r0y
     mul!(z, X, β);
     for i in 1:length(w)
         w[i] = rand(rng, PolyaGammaPSWSampler(y[i] + r0y[], z[i]))
-    end
+    end    
+    return nothing
+end
 
-    # Update some auxiliary statistics
-    A = Symmetric(X' * Diagonal(w) * X + inv(Σ0β))
-    b = X' * (y .- r0y[]) / 2
-
-    # Update gamma
+function step_γ!(rng::AbstractRNG, s::Sampler)
+    @extract s : A b γ m0β Σ0β
+    step_A!(s)
+    step_b!(s)
     for d in 1:length(γ)
-        # Logodds numerator
-        γ[d] = false
-        mf, Σf = posterior_hyperparameters(s::Sampler, A, b)
-        logodds_den = 
-            logpdf(MvNormal(m0β[γ], Σ0β[γ, γ]), zeros(length(mf))) -
-            logpdf(MvNormal(mf, Σf), zeros(length(mf)))
-        # Logodds numerator
-        γ[d] = true
-        mt, Σt = posterior_hyperparameters(s::Sampler, A, b)
-        logodds_num = 
-            logpdf(MvNormal(m0β[γ], Σ0β[γ, γ]), zeros(length(mt))) -
-            logpdf(MvNormal(mt, Σt), zeros(length(mt)))
-        odds = exp(logodds_num - logodds_den)
-        γ[d] = rand(rng) < odds / (1.0 + odds)
+        logodds = 0.0
+        for val in 0:1
+            γ[d] = val
+            m1, Σ1 = posterior_hyperparameters(s)
+            logodds += (-1)^(val + 1) * (
+                logpdf(MvNormal(m0β[γ], Σ0β[γ, γ]), zeros(length(m1))) -
+                logpdf(MvNormal(m1, Σ1), zeros(length(m1)))
+            )
+        end
+        γ[d] = rand(rng) < exp(logodds) / (1.0 + exp(logodds))
     end
+    return nothing
+end
 
-    # Update the posterior hyperparameters 
+function step_β!(rng::AbstractRNG, s::Sampler)
+    @extract s : β A b γ
     β .= 0.0
-    m1, Σ1 = posterior_hyperparameters(s::Sampler, A, b)
+    m1, Σ1 = posterior_hyperparameters(s)
     β[γ] .= rand(rng, MvNormal(m1, Σ1))
     return nothing
 end
 
-function posterior_hyperparameters(s::Sampler, A, b)
-    @extract s : γ m0β Σ0β
-    Σ1 = inv(cholesky(A[γ, γ]))
+function posterior_hyperparameters(s::Sampler)
+    @extract s : γ A b m0β Σ0β
+    Σ1 = inv(cholesky(Symmetric(A[γ, γ])))
     m1 = Σ1 * (b[γ] + Σ0β[γ, γ] \ m0β[γ])
     return m1, Σ1
 end
 
+function step_A!(s::Sampler)
+    @extract s : X w Σ0β A
+    A .= X' * Diagonal(w) * X + inv(Σ0β)
+    return nothing
+end
+
+function step_b!(s::Sampler)
+    @extract s : X y r0y b
+    b .= X' * (y .- r0y[]) / 2
+    return nothing
+end
