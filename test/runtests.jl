@@ -1,4 +1,3 @@
-using Revise
 using BayesNegativeBinomial
 using Distributions
 using Random 
