@@ -1,5 +1,3 @@
-using Revise
-
 using BayesNegativeBinomial
 using Distributions
 using Random 
@@ -27,5 +25,3 @@ end
     chain_array = hcat(chain...)
     mean(chain_array .== 0.0, dims = 2)
 end
-
-# mean(chain)
