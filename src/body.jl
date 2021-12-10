@@ -155,7 +155,7 @@ function step!(rng::AbstractRNG, s::Sampler)
 end
 
 function step_w!(rng::AbstractRNG, s::Sampler)
-    @extract s : y X β w z r0y
+    (; y, X, β, w, z, r0y) = s
     mul!(z, X, β);
     for i in 1:length(w)
         w[i] = rand(rng, PolyaGammaPSWSampler(y[i] + r0y[], z[i]))
@@ -164,7 +164,7 @@ function step_w!(rng::AbstractRNG, s::Sampler)
 end
 
 function step_γ!(rng::AbstractRNG, s::Sampler)
-    @extract s : A b γ m0β Σ0β
+    (; γ, m0β, Σ0β) = s
     step_A!(s)
     step_b!(s)
     for d in 1:length(γ)
@@ -183,7 +183,7 @@ function step_γ!(rng::AbstractRNG, s::Sampler)
 end
 
 function step_β!(rng::AbstractRNG, s::Sampler)
-    @extract s : β A b γ
+    (; β, γ) = s
     β .= 0.0
     m1, Σ1 = posterior_hyperparameters(s)
     β[γ] .= rand(rng, MvNormal(m1, Σ1))
@@ -191,20 +191,20 @@ function step_β!(rng::AbstractRNG, s::Sampler)
 end
 
 function posterior_hyperparameters(s::Sampler)
-    @extract s : γ A b m0β Σ0β
+    (; γ, A, b, m0β, Σ0β) = s
     Σ1 = inv(cholesky(Symmetric(A[γ, γ])))
     m1 = Σ1 * (b[γ] + Σ0β[γ, γ] \ m0β[γ])
     return m1, Σ1
 end
 
 function step_A!(s::Sampler)
-    @extract s : X w Σ0β A
+    (; X, w, Σ0β, A) = s
     A .= X' * Diagonal(w) * X + inv(Σ0β)
     return nothing
 end
 
 function step_b!(s::Sampler)
-    @extract s : X y r0y b
+    (; X, y, r0y, b) = s
     b .= X' * (y .- r0y[]) / 2
     return nothing
 end
