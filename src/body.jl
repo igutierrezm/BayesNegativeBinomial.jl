@@ -12,7 +12,7 @@ y_i | x_i, \\beta, \\gamma
 \\beta_k | \\gamma_k
 &\\sim 
 \\begin{cases}
-    \\mathcal{N}(m_{0\\beta}, \\Sigma_{0\\beta}), 
+    \\mathcal{N}(\\mu_{0\\beta}, \\Sigma_{0\\beta}), 
     &\\text{if } \\gamma = 1,
     \\\\
     \\delta_0
@@ -22,6 +22,10 @@ y_i | x_i, \\beta, \\gamma
 \\gamma
 &\\sim
 \\text{Womack}(\\eta_{0\\gamma}),
+\\\\
+s
+&\\sim
+\\text{Gamma}(a_{0s}, b_{0s}),
 \\end{aligned}
 ```
 
@@ -39,8 +43,9 @@ parameter ``\\eta_{0\\gamma}`` on ``\\{0, 1\\}^K``.
 
 * `β = zeros(size(X, 2))`: current state of ``\\beta``.
 * `Σ0β = 10 * I(size(X, 2))`: ``\\Sigma_{0\\beta}``.
-* `m0β = zeros(size(X, 2))`: ``m_{0\\beta}``.
-* `r0y = [1]`: ``[r_{0y}]``.
+* `μ0β = zeros(size(X, 2))`: ``\\mu_{0\\beta}``.
+* `a0s = 1.0`: ``a_{0s}``.
+* `b0s = 1.0`: ``a_{0s}``.
 
 # Example 
 
@@ -56,31 +61,37 @@ struct Sampler
     y::Vector{Int}
     X::Matrix{Float64}
     β::Vector{Float64}
-    w::Vector{Float64}
-    z::Vector{Float64}
-    a::Vector{Float64}
+    ω::Vector{Float64}
+    ξ::Vector{Float64}
+    ϕ::Vector{Float64}
+    ℓ::Vector{Float64}
     γ::Vector{Bool}
     A::Matrix{Float64}
     b::Vector{Float64}
-    m0β::Vector{Float64}
+    s::Vector{Int}
+    a0s::Float64
+    b0s::Float64
+    μ0β::Vector{Float64}
     Σ0β::Matrix{Float64}
-    r0y::Vector{Int}
     function Sampler(
         y::Vector{Int}, 
         X::Matrix{Float64};
         β::Vector{Float64} = zeros(size(X, 2)),
-        m0β::Vector{Float64} = zeros(size(X, 2)), 
+        μ0β::Vector{Float64} = zeros(size(X, 2)), 
         Σ0β::Matrix{Float64} = Matrix{Float64}(10 * I(size(X, 2))),
-        r0y::Vector{Int} = [1],
+        a0s::Float64 = 1.0,
+        b0s::Float64 = 1.0,
     )
         N, D = size(X)
-        w = zeros(N)
-        z = zeros(N)
-        a = zeros(D)
+        ω = zeros(N)
+        ξ = zeros(N)
+        ϕ = zeros(N)
+        ℓ = zeros(N)
         γ = ones(Bool, D)
         A = zeros(D, D)
         b = zeros(D)
-        new(y, X, β, w, z, a, γ, A, b, m0β, Σ0β, r0y)
+        s = [2]
+        new(y, X, β, ω, ξ, ϕ, ℓ, γ, A, b, s, a0s, b0s, μ0β, Σ0β)
     end
 end
 
@@ -102,8 +113,8 @@ julia> using Random
 julia> rng = MersenneTwister(1)     
 julia> X = randn(rng, 100, 2)
 julia> y = rand(rng, 0:2, 10)        
-julia> s = BayesNegativeBinomial.Sampler(y, X)        
-julia> chain = BayesNegativeBinomial.sample(rng, s)
+julia> sampler = BayesNegativeBinomial.Sampler(y, X)        
+julia> chain = BayesNegativeBinomial.sample(rng, sampler)
 ```
 
 # References
@@ -113,12 +124,12 @@ julia> chain = BayesNegativeBinomial.sample(rng, s)
     Statistical Association*, 108:504, 1339-1349,
     <https://doi.org/10.1080/01621459.2013.829001>.    
 """
-function sample(rng::AbstractRNG, s::Sampler; mcmcsize = 10000, burnin = 5000)
-    chain = [zeros(size(s.X, 2)) for _ in 1:(mcmcsize - burnin)]
+function sample(rng::AbstractRNG, sampler::Sampler; mcmcsize = 10000, burnin = 5000)
+    chain = [zeros(size(sampler.X, 2)) for _ in 1:(mcmcsize - burnin)]
     for iter in 1:mcmcsize
-        step!(rng, s)
+        step!(rng, sampler)
         if iter > burnin
-            chain[iter - burnin] .= s.β
+            chain[iter - burnin] .= sampler.β
         end
     end
     return chain
@@ -147,33 +158,47 @@ julia> BayesNegativeBinomial.step!(rng, s)
     Statistical Association*, 108:504, 1339-1349,
     <https://doi.org/10.1080/01621459.2013.829001>.
 """
-function step!(rng::AbstractRNG, s::Sampler)
-    step_w!(rng, s)
-    step_γ!(rng, s)
-    step_β!(rng, s)
+function step!(rng::AbstractRNG, sampler::Sampler)
+    step_ϕ!(sampler)
+    step_ξ!(sampler)
+    # step_s!(rng, sampler)
+    step_ω!(rng, sampler)
+    step_A!(sampler)
+    step_b!(sampler)    
+    step_γ!(rng, sampler)
+    step_β!(rng, sampler)
     return nothing
 end
 
-function step_w!(rng::AbstractRNG, s::Sampler)
-    (; y, X, β, w, z, r0y) = s
-    mul!(z, X, β);
-    for i in 1:length(w)
-        w[i] = rand(rng, PolyaGammaPSWSampler(y[i] + r0y[], z[i]))
+function step_ξ!(sampler::Sampler)
+    (; ξ, X, β) = sampler
+    mul!(ξ, X, β)
+    return nothing
+end
+
+function step_ϕ!(sampler::Sampler)
+    (; ξ, ϕ) = sampler
+    @. ϕ = 1.0 / (1.0 + exp(ξ))
+    return nothing
+end
+
+function step_ω!(rng::AbstractRNG, sampler::Sampler)
+    (; y, ω, ξ, s) = sampler
+    for i in 1:length(ω)
+        ω[i] = rand(rng, PolyaGammaPSWSampler(y[i] + s[], ξ[i]))
     end    
     return nothing
 end
 
-function step_γ!(rng::AbstractRNG, s::Sampler)
-    (; γ, m0β, Σ0β) = s
-    step_A!(s)
-    step_b!(s)
+function step_γ!(rng::AbstractRNG, sampler::Sampler)
+    (; γ, μ0β, Σ0β) = sampler
     for d in 1:length(γ)
         logodds = 0.0
         for val in 0:1
             γ[d] = val
-            m1, Σ1 = posterior_hyperparameters(s)
+            m1, Σ1 = posterior_hyperparameters(sampler)
             logodds += (-1)^(val + 1) * (
-                logpdf(MvNormal(m0β[γ], Σ0β[γ, γ]), zeros(length(m1))) -
+                logpdf(MvNormal(μ0β[γ], Σ0β[γ, γ]), zeros(length(m1))) -
                 logpdf(MvNormal(m1, Σ1), zeros(length(m1)))
             )
         end
@@ -182,29 +207,49 @@ function step_γ!(rng::AbstractRNG, s::Sampler)
     return nothing
 end
 
-function step_β!(rng::AbstractRNG, s::Sampler)
-    (; β, γ) = s
+function step_β!(rng::AbstractRNG, sampler::Sampler)
+    (; β, γ) = sampler
     β .= 0.0
-    m1, Σ1 = posterior_hyperparameters(s)
+    m1, Σ1 = posterior_hyperparameters(sampler)
     β[γ] .= rand(rng, MvNormal(m1, Σ1))
     return nothing
 end
 
-function posterior_hyperparameters(s::Sampler)
-    (; γ, A, b, m0β, Σ0β) = s
+function posterior_hyperparameters(sampler::Sampler)
+    (; γ, A, b, μ0β, Σ0β) = sampler
     Σ1 = inv(cholesky(Symmetric(A[γ, γ])))
-    m1 = Σ1 * (b[γ] + Σ0β[γ, γ] \ m0β[γ])
+    m1 = Σ1 * (b[γ] + Σ0β[γ, γ] \ μ0β[γ])
     return m1, Σ1
 end
 
-function step_A!(s::Sampler)
-    (; X, w, Σ0β, A) = s
-    A .= X' * Diagonal(w) * X + inv(Σ0β)
+function step_A!(sampler::Sampler)
+    (; X, ω, Σ0β, A) = sampler
+    A .= X' * Diagonal(ω) * X + inv(Σ0β)
     return nothing
 end
 
-function step_b!(s::Sampler)
-    (; X, y, r0y, b) = s
-    b .= X' * (y .- r0y[]) / 2
+function step_b!(sampler::Sampler)
+    (; X, y, s, b) = sampler
+    b .= X' * (y .- s[]) / 2
     return nothing
 end
+
+# function step_s!(rng, sampler::Sampler)
+#     (; y, ℓ, ϕ, s, a0s, b0s) = sampler
+#     N = length(ℓ)
+#     s0 = s[]
+#     for i in 1:N
+#         ℓ[i] = 0
+#         for j in 1:y[i]
+#             ℓ[i] += rand(rng) <= s0 / (s0 + j - 1)
+#         end
+#     end
+#     a1s = a0s + sum(ℓ)
+#     b1s = b0s
+#     for i in 1:N
+#         b1s - log(1 - ϕ[i]) 
+#     end
+#     ds = Gamma(a1s, 1 / b1s)
+#     s[] = rand(rng, ds)
+#     return nothing
+# end
