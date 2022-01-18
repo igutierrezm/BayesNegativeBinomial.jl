@@ -60,6 +60,7 @@ julia> s = BayesNegativeBinomial.Sampler(y, X)
 struct Sampler
     y::Vector{Int}
     X::Matrix{Float64}
+    mapping::Vector{Vector{Int}}
     β::Vector{Float64}
     ω::Vector{Float64}
     ξ::Vector{Float64}
@@ -79,6 +80,7 @@ struct Sampler
         β::Vector{Float64} = zeros(size(X, 2)),
         μ0β::Vector{Float64} = zeros(size(X, 2)), 
         Σ0β::Matrix{Float64} = Matrix{Float64}(10 * I(size(X, 2))),
+        mapping::Vector{Vector{Int}} = [[i] for i in 1:size(X, 2)],
         a0s::Float64 = 1.0,
         b0s::Float64 = 1.0,
     )
@@ -91,7 +93,7 @@ struct Sampler
         A = zeros(D, D)
         b = zeros(D)
         s = [2]
-        new(y, X, β, ω, ξ, ϕ, ℓ, γ, A, b, s, a0s, b0s, μ0β, Σ0β)
+        new(y, X, mapping, β, ω, ξ, ϕ, ℓ, γ, A, b, s, a0s, b0s, μ0β, Σ0β)
     end
 end
 
@@ -191,18 +193,18 @@ function step_ω!(rng::AbstractRNG, sampler::Sampler)
 end
 
 function step_γ!(rng::AbstractRNG, sampler::Sampler)
-    (; γ, μ0β, Σ0β) = sampler
-    for d in 1:length(γ)
+    (; mapping, γ, μ0β, Σ0β) = sampler
+    for d in 1:length(mapping)
         logodds = 0.0
         for val in 0:1
-            γ[d] = val
+            γ[mapping[d]] .= val
             m1, Σ1 = posterior_hyperparameters(sampler)
             logodds += (-1)^(val + 1) * (
                 logpdf(MvNormal(μ0β[γ], Σ0β[γ, γ]), zeros(length(m1))) -
                 logpdf(MvNormal(m1, Σ1), zeros(length(m1)))
             )
         end
-        γ[d] = rand(rng) < exp(logodds) / (1.0 + exp(logodds))
+        γ[mapping[d]] .= rand(rng) < exp(logodds) / (1.0 + exp(logodds))
     end
     return nothing
 end
