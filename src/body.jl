@@ -74,6 +74,7 @@ struct Sampler
     b0s::Float64
     μ0β::Vector{Float64}
     Σ0β::Matrix{Float64}
+    ζ0γ::Float64
     function Sampler(
         y::Vector{Int}, 
         X::Matrix{Float64};
@@ -83,6 +84,7 @@ struct Sampler
         mapping::Vector{Vector{Int}} = [[i] for i in 1:size(X, 2)],
         a0s::Float64 = 1.0,
         b0s::Float64 = 1.0,
+        ζ0γ::Float64 = 1.0,
     )
         N, D = size(X)
         ω = zeros(N)
@@ -93,7 +95,7 @@ struct Sampler
         A = zeros(D, D)
         b = zeros(D)
         s = [2]
-        new(y, X, mapping, β, ω, ξ, ϕ, ℓ, γ, A, b, s, a0s, b0s, μ0β, Σ0β)
+        new(y, X, mapping, β, ω, ξ, ϕ, ℓ, γ, A, b, s, a0s, b0s, μ0β, Σ0β, ζ0γ)
     end
 end
 
@@ -193,15 +195,17 @@ function step_ω!(rng::AbstractRNG, sampler::Sampler)
 end
 
 function step_γ!(rng::AbstractRNG, sampler::Sampler)
-    (; mapping, γ, μ0β, Σ0β) = sampler
+    (; mapping, γ, μ0β, Σ0β, ζ0γ) = sampler
+    pγ = Womack(length(γ), ζ0γ)
     for d in 1:length(mapping)
         logodds = 0.0
         for val in 0:1
             γ[mapping[d]] .= val
             m1, Σ1 = posterior_hyperparameters(sampler)
             logodds += (-1)^(val + 1) * (
-                logpdf(MvNormal(μ0β[γ], Σ0β[γ, γ]), zeros(length(m1))) -
+                logpdf(pγ, γ) -
                 logpdf(MvNormal(m1, Σ1), zeros(length(m1)))
+                # logpdf(MvNormal(μ0β[γ], Σ0β[γ, γ]), zeros(length(m1)))
             )
         end
         γ[mapping[d]] .= rand(rng) < exp(logodds) / (1.0 + exp(logodds))
@@ -255,3 +259,32 @@ end
 #     s[] = rand(rng, ds)
 #     return nothing
 # end
+
+struct Womack <: DiscreteMultivariateDistribution
+    D::Int
+    ζ::Float64
+    p::Vector{Float64}
+    punnormalized::Vector{Float64}
+    function Womack(D::Int, ζ::Float64)
+        p = big.([zeros(D); 1.0])
+        for d1 in (D - 1):-1:0
+            for d2 in 1:(D - d1)
+                p[1 + d1] += ζ * p[1 + d1 + d2] * binomial(big(d1 + d2), big(d1))
+            end
+        end
+        p /= sum(p)
+        punnormalized = copy(p)
+        for d1 in 1:D
+            p[d1] /= binomial(big(D), big(d1 - 1))
+        end
+        return new(D, ζ, p, punnormalized)
+    end
+end
+
+function pdf(d::Womack, γ::Vector{Bool})
+    return d.p[sum(γ) + 1]
+end
+
+function logpdf(d::Womack, γ::Vector{Bool})
+    return log(pdf(d, γ))
+end
