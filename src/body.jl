@@ -203,9 +203,9 @@ function step_γ!(rng::AbstractRNG, sampler::Sampler)
             γ[mapping[d]] .= val
             m1, Σ1 = posterior_hyperparameters(sampler)
             logodds += (-1)^(val + 1) * (
-                logpdf(pγ, γ) -
+                logpdf(pγ, γ) +
+                logpdf(MvNormal(μ0β[γ], Σ0β[γ, γ]), zeros(length(m1))) -
                 logpdf(MvNormal(m1, Σ1), zeros(length(m1)))
-                # logpdf(MvNormal(μ0β[γ], Σ0β[γ, γ]), zeros(length(m1)))
             )
         end
         γ[mapping[d]] .= rand(rng) < exp(logodds) / (1.0 + exp(logodds))
