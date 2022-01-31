@@ -75,6 +75,7 @@ struct Sampler
     μ0β::Vector{Float64}
     Σ0β::Matrix{Float64}
     ζ0γ::Float64
+    update_γ::Bool
     function Sampler(
         y::Vector{Int}, 
         X::Matrix{Float64};
@@ -85,6 +86,7 @@ struct Sampler
         a0s::Float64 = 1.0,
         b0s::Float64 = 1.0,
         ζ0γ::Float64 = 1.0,
+        update_γ = true
     )
         N, D = size(X)
         ω = zeros(N)
@@ -95,7 +97,7 @@ struct Sampler
         A = zeros(D, D)
         b = zeros(D)
         s = [2]
-        new(y, X, mapping, β, ω, ξ, ϕ, ℓ, γ, A, b, s, a0s, b0s, μ0β, Σ0β, ζ0γ)
+        new(y, X, mapping, β, ω, ξ, ϕ, ℓ, γ, A, b, s, a0s, b0s, μ0β, Σ0β, ζ0γ, update_γ)
     end
 end
 
@@ -169,7 +171,7 @@ function step!(rng::AbstractRNG, sampler::Sampler)
     step_ω!(rng, sampler)
     step_A!(sampler)
     step_b!(sampler)    
-    step_γ!(rng, sampler)
+    sampler.update_γ && step_γ!(rng, sampler)
     step_β!(rng, sampler)
     return nothing
 end
