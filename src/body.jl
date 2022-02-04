@@ -80,6 +80,7 @@ struct Sampler
         y::Vector{Int}, 
         X::Matrix{Float64};
         β::Vector{Float64} = zeros(size(X, 2)),
+        s::Vector{Int} = [2],
         μ0β::Vector{Float64} = zeros(size(X, 2)), 
         Σ0β::Matrix{Float64} = Matrix{Float64}(10 * I(size(X, 2))),
         mapping::Vector{Vector{Int}} = [[i] for i in 1:size(X, 2)],
@@ -96,7 +97,6 @@ struct Sampler
         γ = ones(Bool, length(mapping))
         A = zeros(D, D)
         b = zeros(D)
-        s = [2]
         new(y, X, mapping, β, ω, ξ, ϕ, ℓ, γ, A, b, s, a0s, b0s, μ0β, Σ0β, ζ0γ, update_γ)
     end
 end
