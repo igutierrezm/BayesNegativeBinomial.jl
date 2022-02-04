@@ -93,7 +93,7 @@ struct Sampler
         ξ = zeros(N)
         ϕ = zeros(N)
         ℓ = zeros(N)
-        γ = ones(Bool, D)
+        γ = ones(Bool, length(mapping))
         A = zeros(D, D)
         b = zeros(D)
         s = [2]
@@ -171,7 +171,7 @@ function step!(rng::AbstractRNG, sampler::Sampler)
     step_ω!(rng, sampler)
     step_A!(sampler)
     step_b!(sampler)    
-    sampler.update_γ && step_γ!(rng, sampler)
+    step_γ!(rng, sampler)
     step_β!(rng, sampler)
     return nothing
 end
@@ -197,36 +197,53 @@ function step_ω!(rng::AbstractRNG, sampler::Sampler)
 end
 
 function step_γ!(rng::AbstractRNG, sampler::Sampler)
-    (; mapping, γ, μ0β, Σ0β, ζ0γ) = sampler
-    pγ = Womack(length(γ), ζ0γ)
+    (; update_γ, mapping, γ, μ0β, Σ0β, ζ0γ) = sampler
+    update_γ || return nothing
+    D = length(μ0β)
+    γexp = zeros(Bool, D)
     for d in 1:length(mapping)
+        γexp[mapping[d]] .= γ[d]
+    end
+    pγ = Womack(length(γ), ζ0γ)
+    for d in 1:length(γ)
         logodds = 0.0
         for val in 0:1
-            γ[mapping[d]] .= val
+            γ[d] = val
+            γexp[mapping[d]] .= val
             m1, Σ1 = posterior_hyperparameters(sampler)
             logodds += (-1)^(val + 1) * (
                 logpdf(pγ, γ) +
-                logpdf(MvNormal(μ0β[γ], Σ0β[γ, γ]), zeros(length(m1))) -
+                logpdf(MvNormal(μ0β[γexp], Σ0β[γexp, γexp]), zeros(sum(γexp))) -
                 logpdf(MvNormal(m1, Σ1), zeros(length(m1)))
             )
         end
-        γ[mapping[d]] .= rand(rng) < exp(logodds) / (1.0 + exp(logodds))
+        γ[d] = rand(rng) < exp(logodds) / (1.0 + exp(logodds))
     end
     return nothing
 end
 
 function step_β!(rng::AbstractRNG, sampler::Sampler)
-    (; β, γ) = sampler
+    (; mapping, β, γ) = sampler
+    D = length(β)
+    γexp = zeros(Bool, D)
+    for d in 1:length(mapping)
+        γexp[mapping[d]] .= γ[d]
+    end        
     β .= 0.0
     m1, Σ1 = posterior_hyperparameters(sampler)
-    β[γ] .= rand(rng, MvNormal(m1, Σ1))
+    β[γexp] .= rand(rng, MvNormal(m1, Σ1))
     return nothing
 end
 
 function posterior_hyperparameters(sampler::Sampler)
-    (; γ, A, b, μ0β, Σ0β) = sampler
-    Σ1 = inv(cholesky(Symmetric(A[γ, γ])))
-    m1 = Σ1 * (b[γ] + Σ0β[γ, γ] \ μ0β[γ])
+    (; mapping, γ, A, b, μ0β, Σ0β) = sampler
+    D = length(μ0β)
+    γexp = zeros(Bool, D)
+    for d in 1:length(mapping)
+        γexp[mapping[d]] .= γ[d]
+    end    
+    Σ1 = inv(cholesky(Symmetric(A[γexp, γexp])))
+    m1 = Σ1 * (b[γexp] + Σ0β[γexp, γexp] \ μ0β[γexp])
     return m1, Σ1
 end
 
