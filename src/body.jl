@@ -65,8 +65,8 @@ struct Sampler
     ω::Vector{Float64}
     ξ::Vector{Float64}
     ϕ::Vector{Float64}
-    ℓ::Vector{Float64}
-    γ::Vector{Bool}
+    q::Vector{Float64}
+    g::Vector{Bool}
     A::Matrix{Float64}
     b::Vector{Float64}
     s::Vector{Int}
@@ -74,8 +74,8 @@ struct Sampler
     b0s::Float64
     μ0β::Vector{Float64}
     Σ0β::Matrix{Float64}
-    ζ0γ::Float64
-    update_γ::Bool
+    ζ0g::Float64
+    update_g::Bool
     function Sampler(
         y::Vector{Int}, 
         X::Matrix{Float64};
@@ -86,18 +86,18 @@ struct Sampler
         mapping::Vector{Vector{Int}} = [[i] for i in 1:size(X, 2)],
         a0s::Float64 = 1.0,
         b0s::Float64 = 1.0,
-        ζ0γ::Float64 = 1.0,
-        update_γ = true
+        ζ0g::Float64 = 1.0,
+        update_g = true
     )
         N, D = size(X)
         ω = zeros(N)
         ξ = zeros(N)
         ϕ = zeros(N)
-        ℓ = zeros(N)
-        γ = ones(Bool, length(mapping))
+        q = zeros(N)
+        g = ones(Bool, length(mapping))
         A = zeros(D, D)
         b = zeros(D)
-        new(y, X, mapping, β, ω, ξ, ϕ, ℓ, γ, A, b, s, a0s, b0s, μ0β, Σ0β, ζ0γ, update_γ)
+        new(y, X, mapping, β, ω, ξ, ϕ, q, g, A, b, s, a0s, b0s, μ0β, Σ0β, ζ0g, update_g)
     end
 end
 
@@ -171,7 +171,7 @@ function step!(rng::AbstractRNG, sampler::Sampler)
     step_ω!(rng, sampler)
     step_A!(sampler)
     step_b!(sampler)    
-    step_γ!(rng, sampler)
+    step_g!(rng, sampler)
     step_β!(rng, sampler)
     return nothing
 end
@@ -196,54 +196,54 @@ function step_ω!(rng::AbstractRNG, sampler::Sampler)
     return nothing
 end
 
-function step_γ!(rng::AbstractRNG, sampler::Sampler)
-    (; update_γ, mapping, γ, μ0β, Σ0β, ζ0γ) = sampler
-    update_γ || return nothing
+function step_g!(rng::AbstractRNG, sampler::Sampler)
+    (; update_g, mapping, g, μ0β, Σ0β, ζ0g) = sampler
+    update_g || return nothing
     D = length(μ0β)
-    γexp = zeros(Bool, D)
+    gexp = zeros(Bool, D)
     for d in 1:length(mapping)
-        γexp[mapping[d]] .= γ[d]
+        gexp[mapping[d]] .= g[d]
     end
-    pγ = Womack(length(γ), ζ0γ)
-    for d in 1:length(γ)
+    pg = Womack(length(g), ζ0g)
+    for d in 1:length(g)
         logodds = 0.0
         for val in 0:1
-            γ[d] = val
-            γexp[mapping[d]] .= val
+            g[d] = val
+            gexp[mapping[d]] .= val
             m1, Σ1 = posterior_hyperparameters(sampler)
             logodds += (-1)^(val + 1) * (
-                logpdf(pγ, γ) +
-                logpdf(MvNormal(μ0β[γexp], Σ0β[γexp, γexp]), zeros(sum(γexp))) -
+                logpdf(pg, g) +
+                logpdf(MvNormal(μ0β[gexp], Σ0β[gexp, gexp]), zeros(sum(gexp))) -
                 logpdf(MvNormal(m1, Σ1), zeros(length(m1)))
             )
         end
-        γ[d] = rand(rng) < exp(logodds) / (1.0 + exp(logodds))
+        g[d] = rand(rng) < exp(logodds) / (1.0 + exp(logodds))
     end
     return nothing
 end
 
 function step_β!(rng::AbstractRNG, sampler::Sampler)
-    (; mapping, β, γ) = sampler
+    (; mapping, β, g) = sampler
     D = length(β)
-    γexp = zeros(Bool, D)
+    gexp = zeros(Bool, D)
     for d in 1:length(mapping)
-        γexp[mapping[d]] .= γ[d]
+        gexp[mapping[d]] .= g[d]
     end        
     β .= 0.0
     m1, Σ1 = posterior_hyperparameters(sampler)
-    β[γexp] .= rand(rng, MvNormal(m1, Σ1))
+    β[gexp] .= rand(rng, MvNormal(m1, Σ1))
     return nothing
 end
 
 function posterior_hyperparameters(sampler::Sampler)
-    (; mapping, γ, A, b, μ0β, Σ0β) = sampler
+    (; mapping, g, A, b, μ0β, Σ0β) = sampler
     D = length(μ0β)
-    γexp = zeros(Bool, D)
+    gexp = zeros(Bool, D)
     for d in 1:length(mapping)
-        γexp[mapping[d]] .= γ[d]
+        gexp[mapping[d]] .= g[d]
     end    
-    Σ1 = inv(cholesky(Symmetric(A[γexp, γexp])))
-    m1 = Σ1 * (b[γexp] + Σ0β[γexp, γexp] \ μ0β[γexp])
+    Σ1 = inv(cholesky(Symmetric(A[gexp, gexp])))
+    m1 = Σ1 * (b[gexp] + Σ0β[gexp, gexp] \ μ0β[gexp])
     return m1, Σ1
 end
 
@@ -260,16 +260,16 @@ function step_b!(sampler::Sampler)
 end
 
 # function step_s!(rng, sampler::Sampler)
-#     (; y, ℓ, ϕ, s, a0s, b0s) = sampler
-#     N = length(ℓ)
+#     (; y, q, ϕ, s, a0s, b0s) = sampler
+#     N = length(q)
 #     s0 = s[]
 #     for i in 1:N
-#         ℓ[i] = 0
+#         q[i] = 0
 #         for j in 1:y[i]
-#             ℓ[i] += rand(rng) <= s0 / (s0 + j - 1)
+#             q[i] += rand(rng) <= s0 / (s0 + j - 1)
 #         end
 #     end
-#     a1s = a0s + sum(ℓ)
+#     a1s = a0s + sum(q)
 #     b1s = b0s
 #     for i in 1:N
 #         b1s - log(1 - ϕ[i]) 
@@ -300,10 +300,10 @@ struct Womack <: DiscreteMultivariateDistribution
     end
 end
 
-function pdf(d::Womack, γ::Vector{Bool})
-    return d.p[sum(γ) + 1]
+function pdf(d::Womack, g::Vector{Bool})
+    return d.p[sum(g) + 1]
 end
 
-function logpdf(d::Womack, γ::Vector{Bool})
-    return log(pdf(d, γ))
+function logpdf(d::Womack, g::Vector{Bool})
+    return log(pdf(d, g))
 end
