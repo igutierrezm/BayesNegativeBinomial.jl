@@ -75,7 +75,7 @@ struct Sampler
     μ0β::Vector{Float64}
     Σ0β::Matrix{Float64}
     ζ0g::Float64
-    update_g::Bool
+    update_g::Vector{Bool}
     function Sampler(
         y::Vector{Int}, 
         X::Matrix{Float64};
@@ -87,7 +87,7 @@ struct Sampler
         a0s::Float64 = 1.0,
         b0s::Float64 = 1.0,
         ζ0g::Float64 = 1.0,
-        update_g = true
+        update_g = ones(Bool, length(mapping))
     )
         N, D = size(X)
         ω = zeros(N)
@@ -198,7 +198,6 @@ end
 
 function step_g!(rng::AbstractRNG, sampler::Sampler)
     (; update_g, mapping, g, μ0β, Σ0β, ζ0g) = sampler
-    update_g || return nothing
     D = length(μ0β)
     gexp = zeros(Bool, D)
     for d in 1:length(mapping)
@@ -206,6 +205,7 @@ function step_g!(rng::AbstractRNG, sampler::Sampler)
     end
     pg = Womack(length(g), ζ0g)
     for d in 1:length(g)
+        update_g[d] || continue        
         logodds = 0.0
         for val in 0:1
             g[d] = val
@@ -218,6 +218,7 @@ function step_g!(rng::AbstractRNG, sampler::Sampler)
             )
         end
         g[d] = rand(rng) < exp(logodds) / (1.0 + exp(logodds))
+        gexp[mapping[d]] .= g[d]
     end
     return nothing
 end
@@ -278,7 +279,7 @@ end
 #     s[] = rand(rng, ds)
 #     return nothing
 # end
-
+  
 struct Womack <: DiscreteMultivariateDistribution
     D::Int
     ζ::Float64
