@@ -8,6 +8,7 @@ Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 PolyaGammaSamplers = "99ff7fc7-8a0f-4729-8284-81f1989d3fc6"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+WomackDistribution = "a1d3630d-92dc-44ef-8dcb-dd8ea4bc239f"
 
 [compat]
 Distributions = "0.25"

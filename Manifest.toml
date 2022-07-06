@@ -311,6 +311,14 @@ uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 [[deps.Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
+[[deps.WomackDistribution]]
+deps = ["Distributions"]
+git-tree-sha1 = "2d1c7547c63cfcffb69befcae626c34aebfac87e"
+repo-rev = "main"
+repo-url = "git@github.com:igutierrezm/WomackDistribution.jl.git"
+uuid = "a1d3630d-92dc-44ef-8dcb-dd8ea4bc239f"
+version = "0.1.0"
+
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"

@@ -52,57 +52,83 @@ parameter ``\\eta_{0\\gamma}`` on ``\\{0, 1\\}^K``.
 ```julia
 julia> using Random, Distributions
 julia> rng = MersenneTwister(1)
-julia> X = randn(rng, 100, 2)
-julia> y = rand(rng, 0:2, 10)
+julia> X = randn(100, 2)
+julia> y = rand(0:2, 10)
 julia> s = BayesNegativeBinomial.Sampler(y, X)
 ```
 """
 struct Sampler
+    # Data
     y::Vector{Int}
     X::Matrix{Float64}
     mapping::Vector{Vector{Int}}
-    β::Vector{Float64}
-    ω::Vector{Float64}
-    ξ::Vector{Float64}
-    ϕ::Vector{Float64}
-    q::Vector{Float64}
-    g::Vector{Bool}
-    A::Matrix{Float64}
-    b::Vector{Float64}
-    s::Vector{Int}
+    update_g::Vector{Bool}
+    update_s::Bool
+    # Hyperparameters
+    ζ0g::Float64
     a0s::Float64
     b0s::Float64
     μ0β::Vector{Float64}
     Σ0β::Matrix{Float64}
-    ζ0g::Float64
-    update_g::Vector{Bool}
+    # Parameters
+    g::Vector{Bool}
+    β::Vector{Float64}
+    ω::Vector{Float64}
+    q::Vector{Float64}
+    s::Vector{Int}
+    # Transformed Data
+    N::Int
+    D::Int
+    # Transformed Parameters
+    gexp::Vector{Bool} # g[mapping]
+    ξ::Vector{Float64} # ξ := exp(X * β)
+    ϕ::Vector{Float64} # ϕ := 1.0 / (1.0 + exp(ξ))
+    A::Matrix{Float64} # A := X' * Diagonal(ω) * X + inv(Σ0β)
+    b::Vector{Float64} # b := X' * (y .- s[]) / 2
     function Sampler(
+        # Data
         y::Vector{Int}, 
         X::Matrix{Float64};
-        β::Vector{Float64} = zeros(size(X, 2)),
-        s::Vector{Int} = [2],
-        μ0β::Vector{Float64} = zeros(size(X, 2)), 
-        Σ0β::Matrix{Float64} = Matrix{Float64}(10 * I(size(X, 2))),
+        g::Vector{Float64} = ones(size(X, 2)),
         mapping::Vector{Vector{Int}} = [[i] for i in 1:size(X, 2)],
+        update_g::Bool = false,
+        update_s::Bool = false,
+        # Hyperparameters
+        ζ0g::Float64 = 1.0,
         a0s::Float64 = 1.0,
         b0s::Float64 = 1.0,
-        ζ0g::Float64 = 1.0,
-        update_g = ones(Bool, length(mapping))
+        μ0β::Vector{Float64} = zeros(size(X, 2)), 
+        Σ0β::Matrix{Float64} = Matrix{Float64}(I(size(X, 2))),
+        # Parameters
+        β::Vector{Float64} = zeros(size(X, 2)),
+        ω::Vector{Float64} = zeros(size(X, 1)),
+        q::Vector{Float64} = zeros(size(X, 1)),
+        s::Vector{Int} = [2],
     )
+        # Transformed Data
         N, D = size(X)
-        ω = zeros(N)
+        # Transformed Parameters
+        gexp = zeros(Bool, D)
+        for d in 1:length(mapping)
+            gexp[mapping[d]] .= g[d]
+        end
         ξ = zeros(N)
         ϕ = zeros(N)
-        q = zeros(N)
-        g = ones(Bool, length(mapping))
         A = zeros(D, D)
         b = zeros(D)
-        new(y, X, mapping, β, ω, ξ, ϕ, q, g, A, b, s, a0s, b0s, μ0β, Σ0β, ζ0g, update_g)
+        # Final struct
+        new(
+            y, X, mapping, update_g, update_s, # data
+            ζ0g, a0s, b0s, μ0β, Σ0β,           # hyperparameters
+            g, β, ω, q, s,                     # parameters 
+            N, D,                              # transformed data
+            gexp, ξ, ϕ, A, b                   # transformed parameters
+        )
     end
 end
 
 """
-    sample(rng::AbstractRNG, s::BayesNegativeBinomial.Sampler; kwargs...)
+    sample(s::BayesNegativeBinomial.Sampler; kwargs...)
 
 Draw a posterior sample using the Gibbs sampler `s`, 
 following Polson et al. (2013).    
@@ -117,10 +143,10 @@ following Polson et al. (2013).
 ```julia
 julia> using Random                 
 julia> rng = MersenneTwister(1)     
-julia> X = randn(rng, 100, 2)
-julia> y = rand(rng, 0:2, 10)        
+julia> X = randn(100, 2)
+julia> y = rand(0:2, 10)        
 julia> sampler = BayesNegativeBinomial.Sampler(y, X)        
-julia> chain = BayesNegativeBinomial.sample(rng, sampler)
+julia> chain = BayesNegativeBinomial.sample(sampler)
 ```
 
 # References
@@ -130,10 +156,10 @@ julia> chain = BayesNegativeBinomial.sample(rng, sampler)
     Statistical Association*, 108:504, 1339-1349,
     <https://doi.org/10.1080/01621459.2013.829001>.    
 """
-function sample(rng::AbstractRNG, sampler::Sampler; mcmcsize = 10000, burnin = 5000)
+function sample(sampler::Sampler; mcmcsize = 10000, burnin = 5000)
     chain = [zeros(size(sampler.X, 2)) for _ in 1:(mcmcsize - burnin)]
     for iter in 1:mcmcsize
-        step!(rng, sampler)
+        step!(sampler)
         if iter > burnin
             chain[iter - burnin] .= sampler.β
         end
@@ -142,7 +168,7 @@ function sample(rng::AbstractRNG, sampler::Sampler; mcmcsize = 10000, burnin = 5
 end
 
 """
-    step!(rng::AbstractRNG, s::BayesNegativeBinomial.Sampler)
+    step!(s::BayesNegativeBinomial.Sampler)
 
 Perform 1 iteration of the Gibbs sampler `s`, following Polson et al. (2013).
 
@@ -151,10 +177,10 @@ Perform 1 iteration of the Gibbs sampler `s`, following Polson et al. (2013).
 ```julia
 julia> using Random, Distributions
 julia> rng = MersenneTwister(1)
-julia> X = randn(rng, 100, 2)
-julia> y = rand(rng, 0:2, 10)
+julia> X = randn(100, 2)
+julia> y = rand(0:2, 10)
 julia> s = BayesNegativeBinomial.Sampler(y, X)
-julia> BayesNegativeBinomial.step!(rng, s)
+julia> BayesNegativeBinomial.step!(s)
 ```
 
 # References
@@ -164,42 +190,31 @@ julia> BayesNegativeBinomial.step!(rng, s)
     Statistical Association*, 108:504, 1339-1349,
     <https://doi.org/10.1080/01621459.2013.829001>.
 """
-function step!(rng::AbstractRNG, sampler::Sampler)
+function step!(sampler::Sampler)
     step_ϕ!(sampler)
-    step_ξ!(sampler)
-    # step_s!(rng, sampler)
-    step_ω!(rng, sampler)
+    step_s!(sampler)
+    step_ω!(sampler)
     step_A!(sampler)
     step_b!(sampler)    
-    step_g!(rng, sampler)
-    step_β!(rng, sampler)
+    step_g!(sampler)
+    step_β!(sampler)
     return nothing
 end
 
-function step_ξ!(sampler::Sampler)
-    (; ξ, X, β) = sampler
-    mul!(ξ, X, β)
-    return nothing
-end
-
-function step_ϕ!(sampler::Sampler)
-    (; ξ, ϕ) = sampler
-    @. ϕ = 1.0 / (1.0 + exp(ξ))
-    return nothing
-end
-
-function step_ω!(rng::AbstractRNG, sampler::Sampler)
-    (; y, ω, ξ, s) = sampler
-    for i in 1:length(ω)
-        ω[i] = rand(rng, PolyaGammaPSWSampler(y[i] + s[], ξ[i]))
+function step_ω!(sampler::Sampler)
+    (; N, y, ω, ξ, s) = sampler
+    step_ξ!(sampler)
+    for i in 1:N
+        ω[i] = rand(PolyaGammaPSWSampler(y[i] + s[], ξ[i]))
     end    
     return nothing
 end
 
-function step_g!(rng::AbstractRNG, sampler::Sampler)
-    (; update_g, mapping, g, μ0β, Σ0β, ζ0g) = sampler
-    D = length(μ0β)
-    gexp = zeros(Bool, D)
+function step_g!(sampler::Sampler)
+    sampler.update_g && return nothing
+    (; D, gexp, update_g, mapping, g, μ0β, Σ0β, ζ0g) = sampler
+    step_A!(sampler)
+    step_b!(sampler)
     for d in 1:length(mapping)
         gexp[mapping[d]] .= g[d]
     end
@@ -223,8 +238,10 @@ function step_g!(rng::AbstractRNG, sampler::Sampler)
     return nothing
 end
 
-function step_β!(rng::AbstractRNG, sampler::Sampler)
+function step_β!(sampler::Sampler)
     (; mapping, β, g) = sampler
+    step_A!(sampler)
+    step_b!(sampler)
     D = length(β)
     gexp = zeros(Bool, D)
     for d in 1:length(mapping)
@@ -232,7 +249,7 @@ function step_β!(rng::AbstractRNG, sampler::Sampler)
     end        
     β .= 0.0
     m1, Σ1 = posterior_hyperparameters(sampler)
-    β[gexp] .= rand(rng, MvNormal(m1, Σ1))
+    β[gexp] .= rand(MvNormal(m1, Σ1))
     return nothing
 end
 
@@ -260,51 +277,42 @@ function step_b!(sampler::Sampler)
     return nothing
 end
 
-# function step_s!(rng, sampler::Sampler)
-#     (; y, q, ϕ, s, a0s, b0s) = sampler
-#     N = length(q)
-#     s0 = s[]
-#     for i in 1:N
-#         q[i] = 0
-#         for j in 1:y[i]
-#             q[i] += rand(rng) <= s0 / (s0 + j - 1)
-#         end
-#     end
-#     a1s = a0s + sum(q)
-#     b1s = b0s
-#     for i in 1:N
-#         b1s - log(1 - ϕ[i]) 
-#     end
-#     ds = Gamma(a1s, 1 / b1s)
-#     s[] = rand(rng, ds)
-#     return nothing
-# end
-  
-struct Womack <: DiscreteMultivariateDistribution
-    D::Int
-    ζ::Float64
-    p::Vector{Float64}
-    punnormalized::Vector{Float64}
-    function Womack(D::Int, ζ::Float64)
-        p = big.([zeros(D); 1.0])
-        for d1 in (D - 1):-1:0
-            for d2 in 1:(D - d1)
-                p[1 + d1] += ζ * p[1 + d1 + d2] * binomial(big(d1 + d2), big(d1))
-            end
-        end
-        p /= sum(p)
-        punnormalized = copy(p)
-        for d1 in 1:D
-            p[d1] /= binomial(big(D), big(d1 - 1))
-        end
-        return new(D, ζ, p, punnormalized)
+function step_ϕ!(sampler::Sampler)
+    sampler.update_s && return nothing
+    (; ξ, ϕ) = sampler
+    @. ϕ = 1.0 / (1.0 + exp(ξ))
+    return nothing
+end
+
+function step_s!(sampler::Sampler)
+    sampler.update_s && return nothing
+    (; N, q, ϕ, s, a0s, b0s) = sampler
+    step_q!(sampler)
+    a1s = a0s + sum(q)
+    b1s = b0s
+    for i in 1:N
+        b1s - log(1 - ϕ[i]) 
     end
+    ds = Gamma(a1s, 1 / b1s)
+    s[] = rand(ds)
+    return nothing
 end
 
-function pdf(d::Womack, g::Vector{Bool})
-    return d.p[sum(g) + 1]
+function step_ξ!(sampler::Sampler)
+    (; ξ, X, β) = sampler
+    mul!(ξ, X, β)
+    return nothing
 end
 
-function logpdf(d::Womack, g::Vector{Bool})
-    return log(pdf(d, g))
+function step_q!(sampler::Sampler)
+    (; N, y, q, s) = sampler
+    s0 = s[]
+    for i in 1:N
+        q[i] = 0
+        for j in 1:y[i]
+            q[i] += rand(rng) <= s0 / (s0 + j - 1)
+        end
+    end
+    return nothing
 end
+
